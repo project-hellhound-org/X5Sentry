@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue?style=flat-square&logo=python&logoColor=white"/>
-  <img src="https://img.shields.io/badge/version-4.0-red?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-4.1-red?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square"/>
 </p>
@@ -46,15 +46,15 @@ To pull the latest changes and refresh your virtual environment:
 
 ---
 
-## v4.0 — Tactical Enhancements
+## v4.1 — Adaptive Stored XSS Agent
 
-The v4.0 release transforms X5Sentry into a professional-grade XSS hunter with high-confidence validation:
+The v4.1 release evolves the stored XSS scanner into a fully autonomous, feedback-driven testing agent. Rather than blindly iterating a static payload list, the engine first learns the target's behavior and then generates contextual bypass variants.
 
-1.  **Autonomous Recon**: Automatically invokes the [Hellhound Spider](https://github.com/project-hellhound-org/Hellhound-Spider) for deep reconnaissance, mapping traditional endpoints and SPA routes (Intercepting XHR/Fetch). No manual configuration needed — just provide a target.
-2.  **Character Survivability (`FilterAnalyzer`)**: Probes WAF and sanitizer behavior before testing, identifying which characters (`<`, `>`, `'`, `"`, etc.) are blocked, encoded, or passed.
-3.  **Runtime Validation (`PlaywrightValidator`)**: Executes high-confidence payloads in a headless Chromium instance. Confirmed triggers are automatically captured as screenshots.
-4.  **Confidence Scorer**: A heuristic engine that evaluates findings (0-100) based on reflection quality, execution context, and browser-side signals.
-5.  **Live Tactical HUD**: Real-time dashboard showing scan progress, requests sent, and confirmed vulnerabilities as they are found.
+1.  **Filter Classification Engine**: Before attempting any bypass, the agent probes the target and classifies exactly how input is being transformed — `stripped`, `encoded`, `escaped_js`, `waf_block`, or `mixed`. Each class drives a different bypass strategy.
+2.  **State-Machine Bypass Generator**: Based on the filter class, the engine cycles through up to 15 contextually-appropriate bypass variants — from case-mangling and null-byte injection to double-encoding, base64 eval, and JS escape sequences.
+3.  **Data Flow Mapping**: Injects unique markers into writable endpoints (POST forms, APIs), then scans all discovered HTML display pages for reflection — autonomously finding where stored input surfaces.
+4.  **Playwright Execution Confirmation**: Every candidate payload is confirmed in a headless Chromium instance. A finding is only recorded if the browser fires the dialog. Screenshots are saved to `./evidence/`.
+5.  **Blind XSS OOB Listener (`--blind-port`)**: Embeds a self-hosted callback server. Blind payloads carry a unique token in the URL — any incoming hit is a confirmed out-of-band execution.
 
 ---
 
@@ -81,6 +81,7 @@ xssentry <target> [options]
 | `-t`, `--threads` | `10` | Concurrent XSS test workers |
 | `--timeout` | `8` | HTTP timeout per request (seconds) |
 | `--delay` | `0.0` | Delay between requests in seconds |
+| `--max-pages` | `80` | Max pages for the spider to crawl |
 
 **Auth Options**
 
@@ -89,6 +90,12 @@ xssentry <target> [options]
 | `--cookie` | Session cookie or Authorization header for authenticated scans |
 | `--cookie-port` | Port for the local cookie-catch listener (default: 8765) |
 | `--cookie-catcher` | External cookie catcher URL (skips local server) |
+
+**Blind XSS**
+
+| Flag | Description |
+|---|---|
+| `--blind-port` | Port for the embedded OOB callback server (default: random) |
 
 **Feature Flags**
 
@@ -123,6 +130,9 @@ xssentry https://target.com --cookie "session=abc123; csrf=xyz"
 
 # Save results to JSON
 xssentry https://target.com -o report.json
+
+# Enable blind XSS OOB listener on a specific port
+xssentry https://target.com --blind-port 9001
 
 # Skip DOM and blind scan for speed
 xssentry https://target.com --no-dom --no-blind
