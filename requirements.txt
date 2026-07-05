@@ -3,3 +3,5 @@ aiohttp
 beautifulsoup4
 lxml
 rich
+pyautogui
+Pillow

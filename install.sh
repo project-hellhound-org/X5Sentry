@@ -61,27 +61,57 @@ def draw_ui(text, stop_event):
         sys.stdout.write("\r\033[K\033[?25h")
         sys.stdout.flush()
 
-def run_task(text, cmd):
+def run_task(text, cmd, capture=True):
     """Runs a task with the immediate animation."""
     stop_event = threading.Event()
     t = threading.Thread(target=draw_ui, args=(text, stop_event), daemon=True)
     t.start()
     try:
-        subprocess.run(cmd, shell=True, capture_output=True)
+        if capture:
+            subprocess.run(cmd, shell=True, capture_output=True)
+        else:
+            subprocess.run(cmd, shell=True)
     finally:
         stop_event.set()
         t.join()
 
 def main():
+    if os.getuid() != 0:
+        print("[*] Authenticating sudo privileges (credentials will be cached)...")
+        try:
+            subprocess.run("sudo -v", shell=True, check=True)
+        except subprocess.CalledProcessError:
+            print("[-] Sudo validation failed. Exiting.")
+            sys.exit(1)
+
     if not os.path.exists(".venv"):
         run_task("INITIALIZING VIRTUAL ENVIRONMENT", "python3 -m venv .venv")
     run_task("OPTIMIZING DEPENDENCIES", "./.venv/bin/pip install --upgrade pip rich aiohttp beautifulsoup4 lxml playwright")
     run_task("INSTALLING BROWSER CORES", "./.venv/bin/python3 -m playwright install chromium")
     run_task("PATCHING SYSTEM LIBS", "sudo ./.venv/bin/python3 -m playwright install-deps chromium")
-    run_task("CREATING CLI WRAPPER", "cat <<WRAPPER > xssentry\n#!/bin/bash\nREAL_PATH=\\$(dirname \"\\$(readlink -f \"\\$0\")\")\n\"\\$REAL_PATH/.venv/bin/python3\" \"\\$REAL_PATH/xssentry.py\" \"\\$@\"\nWRAPPER\nchmod +x xssentry")
     run_task("FINALIZING SYSTEM SETUP", "./.venv/bin/pip install -e .")
-    link_cmd = "REAL_WRAPPER_PATH=$(readlink -f 'xssentry'); [ -w '/usr/local/bin' ] && ln -sf \"$REAL_WRAPPER_PATH\" /usr/local/bin/xssentry || sudo ln -sf \"$REAL_WRAPPER_PATH\" /usr/local/bin/xssentry"
-    run_task("DEPLOYING GLOBAL LINK", link_cmd)
+
+    # Deploy global CLI wrapper — write a real script to /usr/local/bin/xssentry
+    # Must rm first: old installs left a symlink pointing to the xssentry/ package
+    # directory. sudo tee on a symlink-to-dir writes INSIDE the dir, not over it.
+    project_root = os.path.abspath(os.getcwd())
+    venv_python  = os.path.join(project_root, ".venv", "bin", "python3")
+    entry_script = os.path.join(project_root, "xssentry_run.py")
+    wrapper = f'#!/bin/bash\nexec "{venv_python}" "{entry_script}" "$@"\n'
+    try:
+        # 1) Remove old symlink/file — critical to avoid writing into directory
+        subprocess.run(["sudo", "rm", "-f", "/usr/local/bin/xssentry"],
+                       capture_output=True, check=True)
+        # 2) Write fresh wrapper script
+        subprocess.run(["sudo", "tee", "/usr/local/bin/xssentry"],
+                       input=wrapper.encode(), capture_output=True, check=True)
+        # 3) Make executable
+        subprocess.run(["sudo", "chmod", "+x", "/usr/local/bin/xssentry"],
+                       capture_output=True, check=True)
+        print("\r\033[K\033[1;32m[+]\033[0m Global command deployed: /usr/local/bin/xssentry")
+    except Exception as e:
+        print(f"\r\033[K\033[31m[-]\033[0m Failed to deploy global link: {e}")
+
     print("\n\033[1;32m[+] X5SENTRY DEPLOYED SUCCESSFULLY\033[0m")
     print("\033[2mVERSION: 4.0.0-STABLE\033[0m\n")
 
