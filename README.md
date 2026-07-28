@@ -6,6 +6,11 @@
 
 <p align="center">
   Autonomous XSS Hunter — Maps attack surfaces, analyzes character survivability, and validates vulnerabilities through headless browser automation.
+  <br>
+  <br>
+  <code style="color: #ff2244; font-weight: bold;">[ UNDER DEVELOPMENT ]</code>
+  <br>
+  <i>Expect architectural shifts and potential false positives as we constantly optimize for high-fidelity detection.</i>
 </p>
 
 <p align="center">
