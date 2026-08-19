@@ -15,7 +15,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10+-blue?style=flat-square&logo=python&logoColor=white"/>
-  <img src="https://img.shields.io/badge/version-5.0-red?style=flat-square"/>
+  <img src="https://img.shields.io/badge/version-5.1-red?style=flat-square"/>
+  <img src="https://img.shields.io/badge/spider-Hellhound%20v13.21-orange?style=flat-square"/>
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey?style=flat-square"/>
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square"/>
 </p>
@@ -28,7 +29,7 @@ X5Sentry is an autonomous Cross-Site Scripting scanner that maps a web applicati
 
 The scanner prioritises accuracy over noise by combining static reflection analysis with real browser-side execution. Every high-confidence finding is confirmed in a headless Chromium instance using a cryptographic token-verified dialog handler — if the browser does not fire our exact payload, the finding is discarded. For every confirmed vulnerability, **visual evidence** (OS-level or viewport screenshot) is saved to the `./evidence/` directory.
 
-Reconnaissance is fully handled by the integrated [Hellhound Spider](https://github.com/l4zz3rj0d/Hellhound-Spider) — X5Sentry feeds directly from its output with no extra steps required.
+Reconnaissance is fully handled by the integrated [Hellhound Spider v13.21](https://github.com/l4zz3rj0d/Hellhound-Spider) — a 9,200+ line autonomous crawling engine that performs deep SPA rendering, WAF/CDN fingerprinting, TLS inspection, DNS intelligence, tech-stack profiling, and Wayback Machine enumeration. X5Sentry feeds directly from its output with no extra steps required.
 
 ---
 
@@ -63,13 +64,13 @@ To pull the latest changes and refresh your virtual environment:
 
 ## Architecture
 
-X5Sentry v5.0 is fully modularised into a Python package structure:
+X5Sentry v5.1 is fully modularised into a Python package structure:
 
 ```
 X5Sentry/
 ├── xssentry/                    # Core Python package
 │   ├── main.py                  # CLI entry point & scan orchestrator
-│   ├── spider_integration.py    # Hellhound Spider bridge
+│   ├── spider_integration.py    # Hellhound Spider v13.21 bridge
 │   ├── core/
 │   │   ├── http_client.py       # Session-aware HTTP client
 │   │   ├── verifier.py          # Static reflection & context analysis
@@ -94,7 +95,7 @@ X5Sentry/
 │       ├── helpers.py
 │       ├── colors.py
 │       └── regex_patterns.py
-├── spider.py                    # Hellhound Spider (bundled)
+├── spider.py                    # Hellhound Spider v13.21 (bundled)
 ├── xssentry_run.py              # Root-level CLI wrapper
 ├── install.sh                   # Automated setup script
 ├── update.sh                    # Update & refresh script
@@ -104,12 +105,37 @@ X5Sentry/
 
 ---
 
+## Reconnaissance Engine — Hellhound Spider v13.21
+
+The bundled spider is a full-spectrum reconnaissance engine (~9,200 lines) that executes the following modules before handing discovered endpoints to the XSS engines:
+
+| Module | Class | Capability |
+|---|---|---|
+| **Static Crawler** | `Spider` | Multi-threaded async crawl with depth control, domain scoping, and cluster-based deduplication |
+| **SPA Scanner** | `SPAScanner` | Extracts routes and parameters from inline JavaScript, `<script>` tags, and framework manifests (Next.js `_buildManifest.js`) |
+| **Deep SPA Crawler** | `DeepSPACrawler` | Playwright-powered multi-page rendering — clicks interactive elements, harvests dynamic DOM links, intercepts XHR/fetch requests |
+| **Intelligent Prober** | `IntelligentProber` | Wordlist-based parameter fuzzing and hidden endpoint brute-forcing |
+| **WAF Detector** | `WAFDetector` | Fingerprints WAF/CDN products (Cloudflare, Akamai, AWS WAF, etc.) via response headers and behaviour |
+| **TLS Inspector** | `TLSInspector` | Analyses certificate chain, expiry, SAN mismatches, and weak cipher suites |
+| **Header Auditor** | `HeaderAuditor` | Evaluates security headers (CSP, HSTS, X-Frame-Options, Permissions-Policy, etc.) |
+| **DNS Intelligence** | `DNSIntel` | Resolves A/AAAA/CNAME/MX/TXT/NS records and identifies dangling DNS, SPF misconfigurations, and cloud provider hosting |
+| **WhatWeb Integration** | `Spider._whatweb_*` | External WhatWeb fingerprinting with rich tech-stack panel and internal fallback |
+| **Subdomain Enumerator** | `SubdomainEnumerator` | Passive subdomain discovery via certificate transparency and DNS brute-forcing |
+| **Wayback Probe** | `WaybackProbe` | Retrieves historical endpoints from the Wayback Machine CDX API |
+| **Robots & Security.txt** | `RobotsParser`, `SecurityTxtParser` | Parses `robots.txt` directives, `security.txt` fields, and flags information leaks |
+| **HAR Importer** | `HARImporter` | Ingests browser-recorded HAR files for offline endpoint import |
+| **Extractor** | `Extractor` | Extracts forms, hidden fields, API routes, inline credentials, CTF flags, and HTML comment leaks from page sources |
+
+The spider integration layer (`spider_integration.py`) handles the full `params_detail` bucket format, `form_fields_detail` structures, `observed_values` for realistic default parameters, and forwards authentication cookies and timing flags.
+
+---
+
 ## Scan Pipeline
 
 X5Sentry executes a multi-phase autonomous audit pipeline:
 
 ### Phase 1 — Reconnaissance
-The integrated Hellhound Spider crawls the target and discovers endpoints, parameters, hidden fields, and JavaScript-extracted API routes. Includes `robots.txt`/`sitemap.xml` parsing and wordlist-based parameter fuzzing.
+The integrated Hellhound Spider v13.21 crawls the target and discovers endpoints, parameters, hidden fields, and JavaScript-extracted API routes. Includes `robots.txt`/`sitemap.xml` parsing, Wayback Machine enumeration, Deep SPA rendering via Playwright, WAF/TLS/DNS profiling, and wordlist-based parameter fuzzing.
 
 ### Phase 2 — Reflected XSS
 Tests every discovered parameter with context-aware payloads. Each candidate is first verified via static response analysis (reflection + context detection), then confirmed in a live Chromium browser.
