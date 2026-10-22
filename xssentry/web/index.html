@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XSSentry — AI-Powered Autonomous XSS Hunter</title>
+  <link rel="icon" type="image/png" href="/static/img/logo.png">
+  <link rel="shortcut icon" href="/static/img/logo.png">
+  <link rel="apple-touch-icon" href="/static/img/logo.png">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Ambient Glowing Light Orbs (Refracted by Glass Panels) -->
+  <div class="glass-bg-canvas">
+    <div class="glass-orb orb-cyan"></div>
+    <div class="glass-orb orb-purple"></div>
+    <div class="glass-orb orb-emerald"></div>
+    <div class="glass-orb orb-crimson"></div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════════════════ -->
+  <!-- TOP HEADER                                                        -->
+  <!-- ═════════════════════════════════════════════════════════════════ -->
+  <header class="top-header">
+    <div class="brand-section">
+      <div class="brand-icon">
+        <img src="/static/img/logo.png" alt="XSSentry Logo" class="brand-logo-img">
+      </div>
+      <div>
+        <div class="brand-title">XSSENTRY</div>
+      </div>
+      <span class="brand-tag">HELLHOUND v5</span>
+    </div>
+
+    <!-- Active Target Input Bar -->
+    <div class="header-target-box">
+      <div class="target-prefix">Target</div>
+      <input type="text" id="targetInput" class="target-input" placeholder="e.g. https://target-lab.net" autocomplete="off" spellcheck="false">
+      <button id="btnSetTarget" class="target-btn">Lock Target</button>
+    </div>
+
+    <div class="header-actions">
+      <div id="targetStatusPill" class="status-pill">
+        <div class="status-dot"></div>
+        <span id="targetStatusText">NO TARGET</span>
+      </div>
+      <button class="btn-icon" id="btnResetSession" title="Reset Session" onclick="fetch('/api/reset', {method: 'POST'}).then(() => location.reload())">🔄</button>
+    </div>
+  </header>
+
+  <!-- ═════════════════════════════════════════════════════════════════ -->
+  <!-- MAIN APP CONTAINER (SIDEBAR + CONTENT)                           -->
+  <!-- ═════════════════════════════════════════════════════════════════ -->
+  <div class="app-container">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="nav-group">
+        <div class="nav-label">Operations</div>
+        <a href="#cockpit" class="nav-item active" data-view="cockpit">
+          <span>📊</span> Cockpit
+        </a>
+        <a href="#chat" class="nav-item" data-view="chat">
+          <span>🤖</span> AI Sentry Chat
+        </a>
+        <a href="#attack" class="nav-item" data-view="attack">
+          <span>🌐</span> Attack Surface
+        </a>
+        <a href="#form" class="nav-item" data-view="form">
+          <span>📝</span> Form Studio
+        </a>
+        <a href="#vault" class="nav-item" data-view="vault">
+          <span>⚡</span> Vulnerability Vault
+          <span class="nav-badge" id="badgeFindings">0</span>
+        </a>
+        <a href="#logs" class="nav-item" data-view="logs">
+          <span>💻</span> Live Engine Logs
+        </a>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="system-stats">
+          <span>AI Engine</span>
+          <span style="color: var(--neon-cyan);">NVIDIA NIM</span>
+        </div>
+        <div class="system-stats">
+          <span>Status</span>
+          <span style="color: var(--neon-green);">Armed & Active</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- VIEW 1: COCKPIT DASHBOARD                                  -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <section id="view-cockpit" class="view-section active">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Command Cockpit</h1>
+            <p class="view-subtitle">Autonomous Cross-Site Scripting reconnaissance, scanning & analysis engine</p>
+          </div>
+        </div>
+
+        <!-- Metrics Grid -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-label">Attack Surface Endpoints</div>
+            <div class="metric-val" id="valEndpoints">0</div>
+            <div class="metric-detail">Discovered URLs & routes</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Audited HTML Forms</div>
+            <div class="metric-val" id="valForms">0</div>
+            <div class="metric-detail">Forms with CSRF extracted</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Adaptive Payloads</div>
+            <div class="metric-val" id="valPayloads">142+</div>
+            <div class="metric-detail">Context-aware injection vectors</div>
+          </div>
+          <div class="metric-card crimson">
+            <div class="metric-label">Confirmed XSS Bugs</div>
+            <div class="metric-val" id="valFindings">0</div>
+            <div class="metric-detail">Exploitable findings</div>
+          </div>
+        </div>
+
+        <!-- Quick Operation Cards Deck -->
+        <div class="cockpit-deck">
+          <div class="deck-panel">
+            <div class="deck-panel-title">
+              <span>🎯 Quick Operations Deck</span>
+              <span class="brand-tag">Autonomous</span>
+            </div>
+            <div class="action-cards-grid">
+              <div class="action-card" id="btnRunRecon">
+                <div class="action-card-header">
+                  <span>🔍</span> Active Reconnaissance
+                </div>
+                <p>Probes headers, detects WAF, extracts parameters and exposed endpoints.</p>
+              </div>
+              <div class="action-card" id="btnRunSpider">
+                <div class="action-card-header">
+                  <span>🕷️</span> Deep Crawler
+                </div>
+                <p>Spiders links, inputs, and forms across the target application.</p>
+              </div>
+              <div class="action-card" onclick="switchView('form')">
+                <div class="action-card-header">
+                  <span>📝</span> Stored XSS Form Studio
+                </div>
+                <p>Submit comments/forms with canaries and verify reflection in &lt;a href&gt;.</p>
+              </div>
+              <div class="action-card" onclick="switchView('chat')">
+                <div class="action-card-header">
+                  <span>🤖</span> Consult AI Sentry
+                </div>
+                <p>Chat with Sentry to plan attack vectors and execute multi-step exploits.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mini Terminal Output -->
+          <div class="deck-panel">
+            <div class="deck-panel-title">
+              <span>⚡ Live Activity Stream</span>
+              <span style="font-size: 11px; color: var(--neon-green); font-family: var(--font-mono);">MONITORING</span>
+            </div>
+            <div class="cockpit-terminal" id="cockpitLogs">
+              <div class="log-entry" style="color: var(--text-dim);">System initialized. Waiting for target...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- VIEW 2: AI SENTRY TERMINAL / CHAT                           -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <section id="view-chat" class="view-section">
+        <div class="chat-container">
+          <!-- Messages -->
+          <div class="chat-messages" id="chatMessages">
+            <div class="message agent">
+              <div class="avatar">🤖</div>
+              <div class="message-bubble">
+                Greetings. I am <strong>Sentry</strong>, your autonomous XSS penetration testing agent.
+                Set your target above, or ask me to recon endpoints, analyze input vectors, or hunt Stored/Reflected XSS.
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Deck -->
+          <div class="chat-input-deck">
+            <div class="quick-chips">
+              <div class="chip" data-prompt="Find all forms on the target and test for Stored XSS.">📝 Hunt Stored XSS</div>
+              <div class="chip" data-prompt="Run full reconnaissance and discover all attack surfaces.">🔍 Run Recon</div>
+              <div class="chip" data-prompt="Spider the target and extract all input parameters.">🕷️ Spider Target</div>
+              <div class="chip" data-prompt="Test if the website input in the comment form reflects inside an href attribute.">🔗 Check href Injection</div>
+            </div>
+            <div class="chat-input-wrapper">
+              <input type="text" id="chatInput" class="chat-input" placeholder="Type instructions or slash commands (/recon, /spider, /submit, /status)..." autocomplete="off">
+              <button id="btnSendChat" class="send-btn">Send</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- VIEW 3: ATTACK SURFACE EXPLORER                             -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <section id="view-attack" class="view-section">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Attack Surface Explorer</h1>
+            <p class="view-subtitle">Discovered routes, endpoints, parameters, and form actions</p>
+          </div>
+          <button class="btn-primary" onclick="switchView('chat')">⚡ Plan Attack on Endpoints</button>
+        </div>
+
+        <div class="data-table-card">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 100px;">Method</th>
+                <th>Discovered URL / Route</th>
+                <th style="width: 140px;">Source</th>
+                <th style="width: 180px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="endpointsTableBody">
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 30px;">
+                  No endpoints discovered yet. Launch Recon or Spider to populate.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- VIEW 4: STORED XSS & FORM STUDIO                            -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <section id="view-form" class="view-section">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Stored XSS Form Studio</h1>
+            <p class="view-subtitle">Submit HTML forms with canaries and audit stored reflection in &lt;a href&gt; and innerHTML</p>
+          </div>
+        </div>
+
+        <div class="form-studio-grid">
+          <!-- Form Submission Settings -->
+          <div class="form-box">
+            <h3 style="font-family: var(--font-heading); font-size: 16px;">Form Injection Parameters</h3>
+            
+            <div class="input-group">
+              <label for="formUrlInput">Target Form Page (Where the form lives)</label>
+              <input type="text" id="formUrlInput" class="cyber-input" placeholder="https://target/post?postId=1">
+            </div>
+
+            <div class="input-group">
+              <label for="formViewUrlInput">Display / View Page (Where comments appear)</label>
+              <input type="text" id="formViewUrlInput" class="cyber-input" placeholder="Leave empty to use Form Page URL">
+            </div>
+
+            <div class="input-group">
+              <label for="formFieldInput">Target Field to Inject</label>
+              <input type="text" id="formFieldInput" class="cyber-input" value="website" placeholder="e.g. website, comment, name">
+            </div>
+
+            <div class="input-group">
+              <label for="formPayloadInput">XSS Payload / Canary</label>
+              <input type="text" id="formPayloadInput" class="cyber-input" value="javascript:alert(1)" placeholder="e.g. javascript:alert(1)">
+            </div>
+
+            <button id="btnSubmitForm" class="btn-primary">🚀 Test Form for Stored XSS</button>
+          </div>
+
+          <!-- Results / Inspection Box -->
+          <div class="form-box">
+            <h3 style="font-family: var(--font-heading); font-size: 16px;">Reflection Analysis & Context</h3>
+            <div id="formResultBox" style="min-height: 200px;">
+              <div style="color: var(--text-muted); font-size: 13px; line-height: 1.6;">
+                Configure the form parameters on the left and click <strong>Test Form</strong>.<br><br>
+                Sentry will:
+                <ul style="margin-left: 20px; margin-top: 8px;">
+                  <li>Auto-parse the page and extract forms and CSRF tokens.</li>
+                  <li>Submit the payload into the selected field.</li>
+                  <li>Fetch the display page and check where it reflects.</li>
+                  <li>Specifically detect if injected into <code>&lt;a href="..."&gt;</code> without needing quote breakout!</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- VIEW 5: VULNERABILITY VAULT                                 -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <section id="view-vault" class="view-section">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Vulnerability Vault</h1>
+            <p class="view-subtitle">Confirmed and verified Cross-Site Scripting vulnerabilities</p>
+          </div>
+        </div>
+
+        <div class="findings-grid" id="findingsList">
+          <div style="text-align: center; color: var(--text-muted); padding: 50px;">
+            No vulnerabilities verified yet. Set a target and audit endpoints or forms!
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <!-- VIEW 6: LIVE ENGINE TERMINAL                                -->
+      <!-- ═══════════════════════════════════════════════════════════ -->
+      <section id="view-logs" class="view-section">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">Live Engine Logs</h1>
+            <p class="view-subtitle">Raw stream of agent thoughts, tool executions, and HTTP network requests</p>
+          </div>
+        </div>
+
+        <div class="cockpit-terminal" id="liveTerminalLogs" style="height: calc(100vh - 220px);">
+          <div class="log-entry" style="color: var(--text-dim);">Listening to engine logs...</div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

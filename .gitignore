@@ -157,6 +157,6 @@ evidence/
 *.tmp
 logs/
 bin/
-xssentry
 xssentry.egg-info/
 xssentry.egg-info
+.agents/

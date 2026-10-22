@@ -1,7 +1,5 @@
-playwright
-aiohttp
+openai>=1.0.0
+requests
 beautifulsoup4
 lxml
 rich
-pyautogui
-Pillow

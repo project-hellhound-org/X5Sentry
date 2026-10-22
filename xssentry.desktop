@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=XSSentry
+Comment=AI-Powered Autonomous XSS Hunter [HELLHOUND v5]
+Exec=/home/gh05t/Project-Hellhound/X5Sentry/run_desktop.sh
+Icon=/home/gh05t/Project-Hellhound/X5Sentry/Image/logo.png
+Terminal=false
+Categories=Development;Security;Network;
+StartupNotify=true
+StartupWMClass=XSSentry
