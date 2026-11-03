@@ -1,6 +1,8 @@
-<p align="center">
-  <img src="Image/sentry.jpeg" alt="X5Sentry" width="320"/>
-</p>
+<div align="center">
+
+  <img src="Images/sentry.jpeg" alt="Project-Hellhound" width="800"/>
+
+  <br>
 
 <h1 align="center">X5Sentry</h1>
 
