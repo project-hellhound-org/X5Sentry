@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Image/logo.png" alt="X5Sentry" width="320"/>
+  <img src="Image/sentry.jpeg" alt="X5Sentry" width="320"/>
 </p>
 
 <h1 align="center">X5Sentry</h1>
